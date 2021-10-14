@@ -1,0 +1,28 @@
+vehicle_type_GCAM,vehicle_type
+3W Rural,Truck (0-3.5t)
+Truck (0-1t),Truck (0-3.5t)
+Truck (0-3.5t),Truck (0-3.5t)
+Truck (0-4.5t),Truck (0-3.5t)
+Truck (0-2t),Truck (0-3.5t)
+Truck (0-6t),Truck (0-3.5t)
+Truck (2-5t),Truck (0-3.5t)
+Truck (0-2.7t),Truck (0-3.5t)
+Truck (2.7-4.5t),Truck (0-3.5t)
+Truck (4.5-12t),Truck (7.5t)
+Truck (6-14t),Truck (7.5t)
+Truck (5-9t),Truck (7.5t)
+Truck (6-15t),Truck (7.5t)
+Truck (4.5-15t),Truck (7.5t)
+Truck (1-6t),Truck (7.5t)
+Truck (>12t),Truck (18t)
+Truck (6-30t),Truck (18t)
+Truck (9-16t),Truck (18t)
+Truck (3.5-16t),Truck (18t)
+Truck (>14t),Truck (18t)
+Truck (>15t),Truck (26t)
+Truck (16-32t),Truck (26t)
+Truck (>32t),Truck (40t)
+Heavy Bus,TODEL
+Light Bus,TODEL
+Three-Wheeler_tmp_vehicletype,TODEL
+Truck,TODEL

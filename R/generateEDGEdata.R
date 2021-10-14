@@ -83,6 +83,8 @@ generateEDGEdata <- function(input_folder, output_folder,
   ## disaggregated to ISO level
   ## demand in million pkm and tmk, EI in MJ/km
   print("-- load GCAM raw data")
+  logit_structure <- lvl0_fullLogitStructure(input_folder)
+
   GCAM_data <- lvl0_GCAMraw(input_folder, GCAM2ISO_MAPPING, mrr$GDP_country)
   ## add Hybrid Electric LF
   GCAM_data$load_factor = rbind(GCAM_data$load_factor,
