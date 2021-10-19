@@ -8,7 +8,7 @@
 lvl0_fullLogitStructure <- function(input_folder, GCAM_dir = "GCAM"){
   vehicle_type <- technology <- vehicle_type_GCAM <- NULL
   #load logit structure
-  logit_category <- fread(file.path(GCAM_folder, "logit_categories.csv"))[, vehicle_type := NULL]
+  logit_category <- fread(file.path(input_folder, GCAM_dir, "logit_categories.csv"))[, vehicle_type := NULL]
   ## remove the Adv categories, Hybrid Liquids and LA_BEV
   logit_category = logit_category[!technology %in% c("Tech-Adv-Electric", "Adv-Electric", "Hybrid Liquids", "Tech-Adv-Liquid", "Adv-Liquid")]
   ## remove coal
@@ -16,7 +16,7 @@ lvl0_fullLogitStructure <- function(input_folder, GCAM_dir = "GCAM"){
 
   setnames(logit_category, "univocal_name", "vehicle_type_GCAM")
   logit_techmap <- fread(system.file("extdata", "GCAM_EDGET_vehiclemap.csv", package="edgeTransport"))
-
+  #logit_techmap <- fread("~/git/edgeTransport/inst/extdata/GCAM_EDGET_vehiclemap.csv")
   logit_category <- logit_techmap[logit_category, on="vehicle_type_GCAM"]
   logit_category[is.na(vehicle_type), vehicle_type := vehicle_type_GCAM]
   logit_category <- logit_category[vehicle_type != "TODEL"]

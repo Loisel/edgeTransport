@@ -84,11 +84,15 @@ generateEDGEdata <- function(input_folder, output_folder,
   ## demand in million pkm and tmk, EI in MJ/km
   print("-- load GCAM raw data")
   logit_structure <- lvl0_fullLogitStructure(input_folder)
+  GCAM <- list(
+    loadFactor=lvl0_GCAMloadFactor(input_folder, logit_structure, GCAM2ISO_MAPPING),
+    intensity=lvl0_GCAMvehIntensity(input_folder, logit_structure, GCAM2ISO_MAPPING),
+    historicDemand=lvl0_GCAMhistoricESdemand(
+      input_folder, logit_structure, GCAM2ISO_MAPPING, mrr$GDP_country),
+    speed=lvl0_GCAMspeed(input_folder, logit_structure, GCAM2ISO_MAPPING),
+    vott=lvl0_GCAMvalueOfTime(input_folder, logit_structure, GCAM2ISO_MAPPING, mrr$GDP_POP_MER_country))
 
-  GCAM_data <- lvl0_GCAMraw(input_folder, GCAM2ISO_MAPPING, mrr$GDP_country)
-  ## add Hybrid Electric LF
-  GCAM_data$load_factor = rbind(GCAM_data$load_factor,
-                                GCAM_data$load_factor[technology == "BEV"][, technology := "Hybrid Electric"])
+  ## GCAM_data <- lvl0_GCAMraw(input_folder, GCAM2ISO_MAPPING, mrr$GDP_country)
 
   ## function that loads the TRACCS/Eurostat data for Europe. Final units for demand: millionkm (tkm and pkm)
   ## needed at this point to be used in the intensity calculation below

@@ -69,7 +69,8 @@ lvl0_mrremind <- function(SSP_scen, REMIND2ISO_MAPPING, load_cache=FALSE, mrremi
   GDP_POP_MER=merge(GDP_MER,POP[,.(region,year,POP_val=value)],all = TRUE,by=c("region","year"))
   GDP_POP_MER[,GDP_cap:=weight/POP_val]
 
-  GDP_POP_MER_country = merge(GDP_MER_country, POP_country,by = c("iso", "year"))
+  GDP_POP_MER_country = merge(GDP_MER_country, POP_country,by = c("iso", "year")) %>%
+    .[,.(iso, year, GDP_cap=weight/value)]
 
   return(list(
     GDP_MER_country=GDP_MER_country,
@@ -79,6 +80,7 @@ lvl0_mrremind <- function(SSP_scen, REMIND2ISO_MAPPING, load_cache=FALSE, mrremi
     GDP=GDP,
     GDP_POP=GDP_POP,
     GDP_POP_MER=GDP_POP_MER,
+    GDP_POP_MER_country=GDP_POP_MER_country,
     IEAbal=IEAbal
   ))
 

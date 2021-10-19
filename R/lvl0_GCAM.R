@@ -1,232 +1,255 @@
-#' Read and prepare GCAM data
+#' Apply cleaning steps to GCAM data
 #'
-#' Demand in million pkm and tmk, EI in MJ/km
+#' @param dt input table
+#' @return table with
+cleanGCAMdata <- function(dt, valcol="value"){
+  ## remove underscore from region names
+  if("region" %in% colnames(dt)){
+    dt[, region := gsub("_", " ", region)]
+  }
+  if("stub.technology" %in% colnames(dt)){
+    setnames(dt, "stub.technology", "technology")
+  }
+  if("supplysector" %in% colnames(dt)){
+    dt[, supplysector := NULL]
+  }
+  if("tranSubsector" %in% colnames(dt)){
+    setnames(dt, "tranSubsector", "vehicle_type_GCAM")
+  }
+  if("vehicle_type" %in% colnames(dt)){
+    dt %>% setnames("vehicle_type", "vehicle_type_GCAM") %>%
+      .[!vehicle_type_GCAM %in% c("Heavy Bus", "Light Bus", "Three-Wheeler_tmp_vehicletype", "Truck")]
+  }
+
+  if("technology" %in% colnames(dt)){
+    ## remove unused techs
+    dt <- dt[!technology %in%
+             c("Tech-Adv-Electric", "Adv-Electric", "Hybrid Liquids",
+               "Tech-Adv-Liquid", "Adv-Liquid", "Coal")
+             ]
+  }
+  ## aggregate vehicle classes
+  dt[, (valcol) := as.numeric(get(valcol))]
+  logit_techmap <- fread(system.file("extdata", "GCAM_EDGET_vehiclemap.csv", package="edgeTransport"))
+  #logit_techmap <- fread("~/git/edgeTransport/inst/extdata/GCAM_EDGET_vehiclemap.csv")
+  dt <- logit_techmap[dt, on="vehicle_type_GCAM"][
+    is.na(vehicle_type), vehicle_type := vehicle_type_GCAM][
+    vehicle_type != "TODEL"]
+
+  if("technology" %in% colnames(dt)){
+    dt[, (valcol) := mean(get(valcol), na.rm=TRUE),
+       by=c("region", "year", "vehicle_type", "technology")]
+  }else{
+    dt[, (valcol) := mean(get(valcol), na.rm=TRUE),
+       by=c("region", "year", "vehicle_type")]
+  }
+
+  dt[, vehicle_type_GCAM := NULL]
+  return(unique(dt))
+}
+
+
+#' Cross join the full logit with spatial and temporal dimensions from
+#' a given dataset.
+#'
+#' @param dt input table
+#' @return table with
+fullDimensionality <- function(dt, logit_structure){
+  logit_structure[, k := 1]
+  spatio_temp <- unique(dt[, .(k=1, year, region)])
+  ## full load factor table based on year and region
+  dt_full <- spatio_temp[
+    logit_structure, on="k", allow.cartesian=TRUE][, k := NULL]
+  logit_structure[, k := NULL]
+  return(dt_full)
+}
+
+
+#' Read and prepare GCAM load factor
 #'
 #' @param input_folder folder hosting raw data
 #' @param GCAM2ISO_MAPPING a mapping between ISO3 codes and GCAM region names
-#' @param GDP_country country level GDP PPP (used for disaggregation)
 #' @param GCAM_dir subdirectory within the data input with GCAM data
-#' @return transport entries (demand, energy intensity, load factor, value of time, structure of the logit, vehicle speed)
+#' @return table with load factors, t/veh for freight, passengers/veh for passenger
 
 
-lvl0_GCAMraw <- function(input_folder, GCAM2ISO_MAPPING, GDP_country, GCAM_dir = "GCAM"){
-  coefficient <- `.` <- region <- supplysector <- tranSubsector <- minicam.energy.input <- stub.technology <- maxspeed <- sector <- subsector_L1 <- NULL
-  conv_pkm_MJ <- MJvkm <- loadFactor <- subsector <- technology <- addTimeValue <- time.value.multiplier <- vehicle_type <- NULL
-  GCAM_folder = file.path(input_folder, GCAM_dir)
+lvl0_GCAMloadFactor <- function(input_folder, logit_structure, GCAM2ISO_MAPPING, GCAM_dir = "GCAM"){
+  load_factor <- fread(
+    file.path(input_folder, GCAM_dir, "L254.StubTranTechLoadFactor.csv"), skip=4, header = T) %>%
+    cleanGCAMdata(valcol="loadFactor") %>%
+    .[, technology := NULL]
 
-  ## names of some regions show underscores that have to be substituted with blank spaces
-  rename_region = function(df){
-    region <- NULL
-    df = data.table(df)
-    df[, region := gsub("_", " ", region)]
-  }
-  ## merge data base with full logit structure
-  distribute_logit = function(df, colname, extracol){
-    df = merge(df, logit_category, by.x = c(colname, "technology"), by.y = c("univocal_name", "technology"), all.x = TRUE)
-    df[, c(colname, extracol) := NULL]
-    return(df)
-  }
-  ## function that adds the vehicle types entries that are not in the original GCAM dataframe
-  addvehicletypes = function(dt, ## dt that needs to be extended
-                             reg,  ## region that needs to be extended
-                             vehfrom, ## vehicle type similar to missing vehicle type
-                             vehto, ## missing vehicle type to be integrated
-                             col2use ## name of the column where vehicle types are
-                             ){
-    for (r in reg) {
-      tmp = dt[get(col2use) == vehfrom & region == r,][, (col2use) := vehto]
-      dt = rbind(dt, tmp)
-    }
-    return(dt)
-  }
-  ## coal technologies are not included in REMIND
-  remove.coal = function(dt, cat_name = "technology"){
-    dt[get(cat_name) != "Coal"]
-  }
-  ## due to a bug freight electric trains are not included in GCAM in some entries
-  add.ElTrains = function(dt){
-    subsector <- technology <- region <- NULL
-    reg = setdiff(dt[subsector == "Freight Rail" & technology == "Liquids", region], dt[subsector == "Freight Rail" & technology == "Electric", region])
-    rail = dt[technology == "Liquids" & subsector == "Freight Rail" & region %in% reg,][, c("technology", "tech_output") := list("Electric", 0)]
-    dt = rbind(dt, rail)
-  }
+  load_factor_full <- fullDimensionality(load_factor, logit_structure)
 
-  #load logit structure
-  logit_category = fread(file.path(GCAM_folder, "logit_categories.csv"), na.strings = c("", "NA"))
-  ## remove coal
-  logit_category = remove.coal(logit_category)
+  ## we end up with a full table (all logit categories covered for all regions)
+  load_factor_full[load_factor, loadFactor := i.loadFactor, on=colnames(load_factor)[1:3]]
 
-  #energy intensity
-  vehicle_intensity = fread(file.path(GCAM_folder, "L254.StubTranTechCoef.csv"), skip=4)
+  ## now fill up NAs, we use averages accross regions for missing values
+  ## load_factor[, loadFactor := ifelse(is.na(loadFactor),
+  ##                                    mean(loadFactor, na.rm=TRUE),
+  ##                                    loadFactor),
+  ##             by=c("year", "vehicle_type")]
 
+  ## bikes and walk
+  load_factor_full[vehicle_type %in% c("Cycle", "Walk"), loadFactor := 1]
+
+  ## uniqueness checks
+  stopifnot(!any(duplicated(load_factor_full)))
+
+  return(
+    disaggregate_dt(load_factor_full, GCAM2ISO_MAPPING) %>%
+    setnames("loadFactor", "loadfactor|pt/v"))
+
+}
+
+#' Read and prepare GCAM vehicle intensity
+#'
+#' @param input_folder folder hosting raw data
+#' @param GCAM2ISO_MAPPING a mapping between ISO3 codes and GCAM region names
+#' @param GCAM_dir subdirectory within the data input with GCAM data
+#' @return table with vehicle intensity, MJ/vkm
+
+
+lvl0_GCAMvehIntensity <- function(input_folder, logit_structure, GCAM2ISO_MAPPING, GCAM_dir = "GCAM"){
   CONV_MJ_btu = 947.777
-  vehicle_intensity = rename_region(vehicle_intensity)
-  vehicle_intensity = vehicle_intensity[,.(MJvkm = coefficient/CONV_MJ_btu,  #convert from BTU to MJ
-                                         region, supplysector, tranSubsector, year, sector_fuel = minicam.energy.input,
-                                         technology = stub.technology)]
+  intensity <- fread(
+    file.path(input_folder, GCAM_dir, "L254.StubTranTechCoef.csv"), skip=4, header = T) %>%
+    cleanGCAMdata(valcol="coefficient") %>%
+    .[, .(region, year, vehicle_type, technology,
+          `intensity|MJ/vkm`=coefficient/CONV_MJ_btu)]
 
-  ## remove coal
-  vehicle_intensity = remove.coal(vehicle_intensity)
+  intensity_full <- fullDimensionality(intensity, logit_structure)
 
-  vehicle_intensity = distribute_logit(vehicle_intensity, colname = "tranSubsector", extracol = "supplysector")
+  ## we end up with a full table (all logit categories covered for all regions)
+  intensity_full[intensity, `intensity|MJ/vkm` := `i.intensity|MJ/vkm`, on=colnames(intensity)[1:4]]
 
-  vehicle_intensity = addvehicletypes(vehicle_intensity,
-                                      vehfrom = "Large Car and SUV",
-                                      vehto = "Midsize Car",
-                                      reg = c("EU-15","European Free Trade Association","Europe Non EU"),
-                                      col2use = "vehicle_type")
-  ## remove double category of buses and remove three wheelers
-  vehicle_intensity = vehicle_intensity[!vehicle_type %in% c("Heavy Bus", "Light Bus", "Three-Wheeler_tmp_vehicletype", "Truck")]
-  ## remove the Adv categories, Hybrid Liquids and LA_BEV
-  vehicle_intensity = vehicle_intensity[!technology %in% c("Tech-Adv-Electric", "Adv-Electric", "Hybrid Liquids", "Tech-Adv-Liquid", "Adv-Liquid")]
-  vehicle_intensity[vehicle_type %in% c("3W Rural", "Truck (0-1t)", "Truck (0-3.5t)", "Truck (0-4.5t)", "Truck (0-2t)", "Truck (0-6t)", "Truck (2-5t)", "Truck (0-2.7t)", "Truck (2.7-4.5t)"), vehicle_type := "Truck (0-3.5t)"]
-  vehicle_intensity[vehicle_type %in% c("Truck (4.5-12t)", "Truck (6-14t)", "Truck (5-9t)", "Truck (6-15t)", "Truck (4.5-15t)", "Truck (1-6t)"), vehicle_type := "Truck (7.5t)"]
-  vehicle_intensity[vehicle_type %in% c("Truck (>12t)", "Truck (6-30t)", "Truck (9-16t)","Truck (>14t)"), vehicle_type := "Truck (18t)"]
-  vehicle_intensity[vehicle_type %in% c("Truck (>15t)", "Truck (3.5-16t)", "Truck (16-32t)"), vehicle_type := "Truck (26t)"]
-  vehicle_intensity[vehicle_type %in% c("Truck (>32t)"), vehicle_type := "Truck (40t)"]
-  vehicle_intensity=vehicle_intensity[,.(MJvkm = mean(MJvkm)), by = c("sector_fuel","region", "year", "vehicle_type", "technology", "sector", "subsector_L3", "subsector_L2","subsector_L1")]
+  ## uniqueness checks
+  stopifnot(!any(duplicated(intensity_full)))
 
-  #load factor
-  load_factor = read.csv(file.path(GCAM_folder, "L254.StubTranTechLoadFactor.csv"), skip=4, header = T,stringsAsFactors = FALSE)
-  load_factor = rename_region(load_factor)
-  setnames(load_factor, old = "stub.technology", new = "technology")
-  ## remove the Adv categories, Hybrid Liquids and LA_BEV
-  load_factor = load_factor[!technology %in% c("Tech-Adv-Electric", "Adv-Electric", "Hybrid Liquids", "Tech-Adv-Liquid", "Adv-Liquid")]
+  return(disaggregate_dt(intensity_full, GCAM2ISO_MAPPING))
+}
 
-  ## remove coal
-  load_factor = remove.coal(load_factor)
 
-  load_factor = distribute_logit(load_factor, colname = "tranSubsector", extracol = "supplysector")
+#' Read and prepare historic (until 2010) ES demand from GCAM
+#'
+#' @param input_folder folder hosting raw data
+#' @param logit_structure full logit tree structure
+#' @param GCAM2ISO_MAPPING a mapping between ISO3 codes and GCAM region names
+#' @param GDP_country country-wise GDP PPP data
+#' @param GCAM_dir subdirectory within the data input with GCAM data
+#' @return table with ES demand, unit: million tkm/pkm
 
-  load_factor = addvehicletypes(dt=load_factor,
-                                      vehfrom = "Large Car and SUV",
-                                      vehto = "Midsize Car",
-                                      reg = c("EU-15","European Free Trade Association","Europe Non EU"),
-                                      col2use = "vehicle_type")
-  ## remove double category of buses and remove three wheelers; substitute
-  load_factor = load_factor[!vehicle_type %in% c("Heavy Bus", "Light Bus", "Three-Wheeler_tmp_vehicletype", "Truck")]
-  ## add load factor for trucks
-  load_factor[vehicle_type %in% c("3W Rural", "Truck (0-1t)", "Truck (0-3.5t)", "Truck (0-4.5t)", "Truck (0-2t)", "Truck (0-6t)", "Truck (2-5t)", "Truck (0-2.7t)", "Truck (2.7-4.5t)"), vehicle_type := "Truck (0-3.5t)"]
-  load_factor[vehicle_type %in% c("Truck (4.5-12t)", "Truck (6-14t)", "Truck (5-9t)", "Truck (6-15t)", "Truck (4.5-15t)", "Truck (1-6t)"), vehicle_type := "Truck (7.5t)"]
-  load_factor[vehicle_type %in% c("Truck (>12t)", "Truck (6-30t)", "Truck (9-16t)","Truck (>14t)", "Truck"), vehicle_type := "Truck (18t)"]
-  load_factor[vehicle_type %in% c("Truck (>15t)", "Truck (3.5-16t)", "Truck (16-32t)"), vehicle_type := "Truck (26t)"]
-  load_factor[vehicle_type %in% c("Truck (>32t)"), vehicle_type := "Truck (40t)"]
+lvl0_GCAMhistoricESdemand <- function(input_folder, logit_structure, GCAM2ISO_MAPPING,
+                                      GDP_country, GCAM_dir = "GCAM"){
+  demand <- fread(
+    file.path(input_folder, GCAM_dir, "tech_output.csv"), skip = 1, sep=";", header = T) %>%
+    melt(measure.vars=6:8, value.name="tech_output", variable.name = "year") %>%
+    .[, .(region, year=as.numeric(as.character(year)), vehicle_type=subsector,
+          technology, `demand|million tpkm/a`=tech_output)] %>%
+    cleanGCAMdata(valcol="demand|million tpkm/a")
 
-  load_factor=load_factor[,.(loadFactor = mean(loadFactor)), by = c("region", "year", "vehicle_type", "technology", "sector", "subsector_L3", "subsector_L2","subsector_L1")]
+  demand_full <- fullDimensionality(demand, logit_structure)
 
-  #calculate MJ/km conversion factor
-  conv_pkm_mj = merge(vehicle_intensity,load_factor, all = TRUE)
-  conv_pkm_mj = conv_pkm_mj[,conv_pkm_MJ := MJvkm/loadFactor]
-  conv_pkm_mj[, c("MJvkm", "loadFactor") := NULL]
-  conv_pkm_mj = conv_pkm_mj[technology != "LA-BEV"]
-  ## load and change the tech_output file so that it reflects the logit tree
-  tech_output = fread(file.path(GCAM_folder, "tech_output.csv"), skip = 1, sep=";", header = T)
-  tech_output = melt(tech_output, measure.vars=6:26, value.name="tech_output", variable.name = "year")
-  tech_output[, c("Units", "scenario", "year") := list(NULL, NULL, as.numeric(as.character(year)))]
-  tech_output = tech_output[year <= 2010 & !subsector %in% c("road","LDV","bus","4W","2W")]
-  tech_output[, technology := ifelse(subsector %in% c("Walk","Cycle"), paste0(subsector,"_tmp_technology"),technology)]
+  ## we end up with a full table (all logit categories covered for all regions)
+  demand_full[demand, `demand|million tpkm/a` := `i.demand|million tpkm/a`, on=colnames(demand)[1:4]]
 
-  tech_output = remove.coal(tech_output)
-  tech_output = add.ElTrains(tech_output)
-
-  setnames(tech_output, old="sector", new="supplysector")
-
-  tech_output = distribute_logit(tech_output,colname = "subsector",extracol = "supplysector")
-  ## merge 2wheelers and 3 wheelers and different categories of buses; remove NG motorbikes and merge BEV and LA-BEV
-  tech_output[vehicle_type %in% c("Heavy Bus", "Light Bus"), c("vehicle_type","subsector_L1", "subsector_L2", "subsector_L3", "sector") := list("Bus_tmp_vehicletype", "Bus_tmp_subsector_L1", "Bus", "trn_pass_road", "trn_pass")]
-  tech_output[vehicle_type %in% c("Three-Wheeler_tmp_vehicletype", "Scooter"), c("vehicle_type","subsector_L1", "subsector_L2", "subsector_L3", "sector") := list("Motorcycle (50-250cc)", "trn_pass_road_LDV_2W", "trn_pass_road_LDV", "trn_pass_road", "trn_pass")]
-  tech_output[vehicle_type == "Multipurpose Vehicle", vehicle_type := "Subcompact Car"]
-  tech_output[technology == "LA-BEV", technology := "BEV"]
-  tech_output[technology %in% c("Tech-Adv-Electric", "Adv-Electric"), technology := "Electric"]
-  tech_output[technology %in% c("Hybrid Liquids", "Tech-Adv-Liquid", "Adv-Liquid"), technology := "Liquids"]
-  tech_output = tech_output[technology == "NG" & subsector_L1 == "trn_pass_road_LDV_2W", technology := "Liquids"]
-
-  ## merge the truck categories
-  tech_output[vehicle_type %in% c("3W Rural", "Truck (0-1t)", "Truck (0-3.5t)", "Truck (0-4.5t)", "Truck (0-2t)", "Truck (0-6t)", "Truck (2-5t)", "Truck (0-2.7t)", "Truck (2.7-4.5t)"), vehicle_type := "Truck (0-3.5t)"]
-  tech_output[vehicle_type %in% c("Truck (4.5-12t)", "Truck (6-14t)", "Truck (5-9t)", "Truck (6-15t)", "Truck (4.5-15t)", "Truck (1-6t)"), vehicle_type := "Truck (7.5t)"]
-  tech_output[vehicle_type %in% c("Truck (>12t)", "Truck (6-30t)", "Truck (9-16t)","Truck (>14t)", "Truck"), vehicle_type := "Truck (18t)"]
-  tech_output[vehicle_type %in% c("Truck (>15t)", "Truck (3.5-16t)", "Truck (16-32t)"), vehicle_type := "Truck (26t)"]
-  tech_output[vehicle_type %in% c("Truck (>32t)"), vehicle_type := "Truck (40t)"]
-  tech_output = tech_output[,.(tech_output = sum(tech_output)), by = c("region","sector","subsector_L3", "subsector_L2", "subsector_L1", "vehicle_type","technology","year")]
-
-  tech_output = rename_region(tech_output)
-
-  ## speed motorized modes
-  speed_mot = fread(file.path(GCAM_folder, "L254.tranSubsectorSpeed.csv"), skip=4)
-  speed_mot = rename_region(speed_mot)
-  speed_mot = unique(speed_mot) ## delete the reduntand rows present in the dataframe
-  speed_mot = speed_mot[, .(speed=mean(speed)), by = c("region", "year", "supplysector", "tranSubsector")] ## some entries are repeated otherwise (e.g. Moped, 1990)
-
-  ## speed non-motorized
-  speed_not_mot = fread(file.path(GCAM_folder, "A54.globaltech_nonmotor.csv"), skip=1, header = T)
-  speed_not_mot = speed_not_mot[, c("supplysector", "tranSubsector", "speed")]
-
-  ## conversion GDP -> PPP-MER coefficient
-  PPP_MER = fread(file.path(GCAM_folder, "GCAM_PPP_MER.csv"), header = T)
-  PPP_MER = PPP_MER[,.(region,PPP_MER)] ## select only the coefficient to move from PPP to MER GDP
-  regions = unique(PPP_MER$region)
-
-  speed_not_mot = speed_not_mot[,.(tmp=paste0(supplysector,"#",tranSubsector,"#",speed))]
-  speed_not_mot = CJ(tmp = speed_not_mot$tmp, region = regions, unique = T)
-  speed_not_mot = speed_not_mot[,.(tmp = paste0(tmp,"#",region))]
-  speed_not_mot = CJ(tmp = speed_not_mot$tmp, year = speed_mot$year, unique = TRUE)
-  speed_not_mot[, `:=`(c("supplysector","tranSubsector","speed","region"), tstrsplit(tmp, "#",fixed = TRUE))]
-  speed_not_mot[, c("tmp", "speed") := list(NULL, as.numeric(speed))]
-  speed_not_mot = rename_region(speed_not_mot)
-  speed = merge(speed_not_mot, speed_mot, all=TRUE, by=c("region", "year", "tranSubsector", "supplysector", "speed"))
-  speed = addvehicletypes(speed,
-                          vehfrom = "Large Car and SUV",
-                          vehto = "Midsize Car",
-                          reg = c("EU-15","European Free Trade Association","Europe Non EU"),
-                          col2use = "tranSubsector")
-  ## Apply convergence in time to the fastest vehicle across regions
-  speed[, maxspeed := max(speed[year == 2100]), by = .(tranSubsector)]
-  speed[year >= 2020, speed := speed[year == 2020]*(2100-year)/(2100-2010) + maxspeed*(year-2020)/(2100-2020), by =c("tranSubsector", "region")]
-  speed[, maxspeed := NULL]
-  ## rename category following EDGE-T structure
-  speed[supplysector == "trn_pass_road_bus", supplysector := "trn_pass_road_bus_tmp_subsector_L1"]
-  ## VOT
-  vott_all = fread(file.path(GCAM_folder, "A54.tranSubsector_VOTT.csv"), skip = 1)
-  vott_all[supplysector == "trn_pass_road_LDV_4W", addTimeValue := 1]
-  vott_all = vott_all[!duplicated(vott_all)][addTimeValue==1] #delete the levels that have not time value added
-  vott_all = vott_all[tranSubsector != "4W"]  ## this entry has to be removed due to the required "double counting" happening in GCAM for their data structure
-  vott_all[, c("speed.source", "wait.walk.vott", "wait.walk.share", "in.vehicle.VOTT", "fuelprefElasticity", "addTimeValue") := list(NULL, NULL, NULL, NULL, NULL, NULL)]
-
-  tmp = CJ(tranSubsector = vott_all$tranSubsector,
-               region = regions, unique=TRUE)
-
-  vott_all = merge(tmp, vott_all, all=TRUE, by = "tranSubsector")
-  vott_all = merge(vott_all,PPP_MER,all=TRUE,by="region")
-  vott_all = vott_all[,.(time.value.multiplier=time.value.multiplier/PPP_MER,region,tranSubsector,supplysector)] #rescale the time value multiplier so that it is in PPP basis and not MER
-  vott_all = rename_region(vott_all)
-  ## rename category following EDGE-T structure
-  vott_all[supplysector == "trn_pass_road_bus", supplysector := "trn_pass_road_bus_tmp_subsector_L1"]
+  ## uniqueness checks
+  stopifnot(!any(duplicated(demand_full)))
 
   ## to ISO
-  tech_output_iso = disaggregate_dt(
-    tech_output, GCAM2ISO_MAPPING,
-    fewcol = "region", manycol = "iso", valuecol = "tech_output",
+  demand_iso <- disaggregate_dt(
+    demand_full, GCAM2ISO_MAPPING,
+    fewcol = "region", manycol = "iso", valuecol = "demand|million tpkm/a",
     datacols=c("sector", "subsector_L1", "subsector_L2",
                "subsector_L3", "vehicle_type", "technology"),
     weights = GDP_country, weightcol = "weight"
   )
 
-  int_iso <- disaggregate_dt(conv_pkm_mj, GCAM2ISO_MAPPING)
-  load_factor_iso <- disaggregate_dt(load_factor, GCAM2ISO_MAPPING)
-
-  vott_iso <- disaggregate_dt(vott_all, GCAM2ISO_MAPPING)
-
-  speed_iso <- disaggregate_dt(speed, GCAM2ISO_MAPPING)
-
-  GCAM_data = list(tech_output = tech_output_iso,
-                 logit_category = logit_category,
-                 conv_pkm_mj = int_iso,
-                 load_factor = load_factor_iso,
-                 vott_all = vott_iso,
-                 speed = speed_iso
-  )
-  return(GCAM_data)
+  return(demand_iso)
 }
+
+
+#' Read and prepare GCAM speed index
+#'
+#' @param input_folder folder hosting raw data
+#' @param GCAM2ISO_MAPPING a mapping between ISO3 codes and GCAM region names
+#' @param GCAM_dir subdirectory within the data input with GCAM data
+#' @return table with speed index, dimensionless
+
+lvl0_GCAMspeed <- function(input_folder, logit_structure, GCAM2ISO_MAPPING, GCAM_dir = "GCAM"){
+  speed_mot = fread(file.path(input_folder, GCAM_dir, "L254.tranSubsectorSpeed.csv"), skip=4) %>%
+    cleanGCAMdata(valcol="speed")
+  speed_full <- fullDimensionality(speed_mot, logit_structure)
+  speed_full[speed_mot, speed := i.speed, on=colnames(speed_mot)[1:3]]
+
+  ## speed non-motorized
+  speed_not_mot = fread(file.path(input_folder, GCAM_dir, "A54.globaltech_nonmotor.csv"),
+                        skip=1, header = T) %>%
+    .[, .(vehicle_type=tranSubsector, speed)]
+
+  speed_full[speed_not_mot, speed := i.speed, on="vehicle_type"]
+
+  stopifnot(!any(duplicated(speed_full)))
+
+  speed_full <- speed_full[sector == "trn_pass"]
+  ## now fill up NAs, we use averages accross regions for missing values
+  speed_full[, speed := ifelse(is.na(speed),
+                               mean(speed, na.rm=TRUE),
+                               speed),
+             by=c("year", "vehicle_type")]
+
+  ## Apply convergence in time to the fastest vehicle across regions
+  speed_full[, maxspeed := max(speed[year == 2100]), by = "vehicle_type"]
+  speed_full[year >= 2020,
+             speed := speed[year == 2020]*(2100-year)/(2100-2020) + maxspeed*(year-2020)/(2100-2020),
+             by =c("vehicle_type", "region")]
+
+
+  return(disaggregate_dt(speed_full, GCAM2ISO_MAPPING))
+}
+
+
+#' Read and prepare GCAM value-of-time
+#'
+#' @param input_folder folder hosting raw data
+#' @param GCAM2ISO_MAPPING a mapping between ISO3 codes and GCAM region names
+#' @param GCAM_dir subdirectory within the data input with GCAM data
+#' @return table with value-of-time, in relation to GDP MER
+
+lvl0_GCAMvalueOfTime <- function(input_folder, logit_structure, GCAM2ISO_MAPPING,
+                                 GDP_POP_MER_country, GCAM_dir = "GCAM"){
+  vott <- fread(file.path(input_folder, GCAM_dir, "A54.tranSubsector_VOTT.csv"), skip = 1) %>%
+    .[, .(vehicle_type_GCAM=tranSubsector, vot=time.value.multiplier)] %>%
+    .[!vehicle_type_GCAM %in% c("Heavy Bus", "Light Bus", "Three-Wheeler_tmp_vehicletype", "Truck")]
+
+  logit_techmap <- fread("~/git/edgeTransport/inst/extdata/GCAM_EDGET_vehiclemap.csv")
+  vott <- logit_techmap[vott, on="vehicle_type_GCAM"][
+    is.na(vehicle_type), vehicle_type := vehicle_type_GCAM][
+    vehicle_type != "TODEL"]
+
+  vott <- vott[!is.na(vot)] %>%
+    .[, .(vot= mean(vot, na.rm=TRUE)),
+      by=c("vehicle_type")]
+
+  stopifnot(!any(duplicated(vott)))
+
+  speed <- lvl0_GCAMspeed(input_folder, logit_structure, GCAM2ISO_MAPPING)
+
+  vott <- vott[speed, on="vehicle_type"] %>%
+    merge(GDP_POP_MER_country, by = c("iso", "year"))
+
+  WEEKS_PER_YEAR = 50
+  HOURS_PER_WEEK = 40
+  vott[, `valueOfTime|2005$` := GDP_cap                             ## [2005$/person/year]
+                       *vot                                ## [2005$/person/year]
+                       /(HOURS_PER_WEEK* WEEKS_PER_YEAR)/  ## [2005$/h]
+                       speed]                              ## [2005$/km]
+
+  return(vott[,.(iso, year, sector, subsector_L3, subsector_L2, subsector_L1,
+                     technology, `valueOfTime|2005$`)])
+
+}
+
 
 #' Load value-of-time and exponents
 #'
@@ -261,20 +284,6 @@ lvl0_VOTandExponents <- function(GCAM_data, GDP_MER_country, POP_country, input_
   logit_exponent_S2S3 = fread(exp_folder("S2S3_logitexponent.csv"))
   logit_exponent_S3S = fread(exp_folder("S3S_logitexponent.csv"))
 
-  ## load VOT factors, speed and load factor
-  vott_all = copy(GCAM_data[["vott_all"]])
-
-  ## calculate VOT
-  vott_all = merge(vott_all, GDP_POP_cap, all = TRUE, by = "iso", allow.cartesian = TRUE) #for each time step and each region
-  vott_all = merge (vott_all, GCAM_data[["speed"]], all = FALSE, by = c("iso", "year", "tranSubsector", "supplysector"))
-  WEEKS_PER_YEAR = 50
-  HOURS_PER_WEEK = 40
-  vott_all[, time_price := GDP_cap                             ## [2005$/person/year]
-                           *time.value.multiplier              ## [2005$/person/year]
-                           /(HOURS_PER_WEEK* WEEKS_PER_YEAR)/  ## [2005$/h]
-                           speed]                              ## [2005$/km]
-
-  value_of_time = vott_all[,.(iso, year, time_price, tranSubsector, supplysector)]
 
   ## Ceate level specific VOT data tables
 
@@ -330,4 +339,3 @@ lvl0_VOTandExponents <- function(GCAM_data, GDP_MER_country, POP_country, input_
   return(result)
 
 }
-
