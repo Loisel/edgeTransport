@@ -266,15 +266,14 @@ compScenEDGET <- function(listofruns, hist, y_bar = c(2010, 2030, 2050, 2100),
     SSP_Scen[i] <- unique(tmp$GDP_scenario)
     Tech_Scen[i] <- unique(tmp$EDGE_scenario)
 
+    candidate <- sub("_20.*", "", listofruns[[i]]) %>% sub(".*/", "")
     # Create unique Scenario names for plotting
-    if (any(grepl(listofruns[[i]], scenNames))) {
-      scenNames[i] <- paste0(SSP_Scen[i], "-", Tech_Scen[i])
-      scenNames[i] <- paste0(sub(".*/", "", scenNames[i]), "_", count_scen)
+    if (candidate %in% scenNames) {
+      scenNames[i] <- paste0(candidate, "_", count_scen)
       count_scen <- count_scen + 1
-    } else {
-      scenNames[i] <- sub("_20.*", "", listofruns[[i]])
-      scenNames[i] <- sub(".*/", "", scenNames[i])
-}
+    }else{
+      scenNames[i] <- candidate
+    }
 
     # load input data from EDGE runs for comparison
     demand_km[[i]] <- readRDS(level2path(listofruns[[i]], "demandF_plot_pkm.RDS")) ## detailed energy services demand, million pkm

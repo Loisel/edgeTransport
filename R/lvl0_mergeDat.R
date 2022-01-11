@@ -301,7 +301,12 @@ lvl0_mergeDat = function(UCD_output, EU_data, PSI_costs, altCosts, CHN_trucks, G
   demDomSh = dem[!(iso %in% unique(EU_data$dem_eurostat[vehicle_type %in% c("Domestic Ship_tmp_vehicletype"),iso])) &
                    vehicle_type %in% c("Domestic Ship_tmp_vehicletype")]  ## Domestic shipping comes from Eurostat -> not the same ISO as in TRACCS are provided
   demRoad = dem[!(iso %in% unique(EU_data$dem_eurostat$iso) & subsector_L3 %in% c("trn_pass_road", "trn_freight_road")) &
-                  subsector_L3 %in% c("trn_pass_road", "trn_freight_road")]
+                subsector_L3 %in% c("trn_pass_road", "trn_freight_road")]
+  ## correct demand for busses in China and OAS
+  ## value is 2.3 billion pkm for 2010 after the fix in CHN
+  ## according to http://www.sciencedirect.com/science/article/pii/S1361920916301651
+  demRoad[iso %in% c("CHN", unique(REMIND2ISO_MAPPING[region == "OAS", iso])) & subsector_L2 == "Bus",
+          tech_output := tech_output / 2.5]
   ## demand for HSR has to be included separately for all ISO
   demHSR = dem[subsector_L3 %in% "HSR"]
 
