@@ -32,6 +32,7 @@ lvl1_preftrend <- function(SWS, calibdem, incocost, years, GDP, GDP_POP_MER, sma
       speedHydrogenAir = 5
       speedFCEV = 5
       convsymmFCEV = 2045
+      railTargetYear = 2100
     },
     "ElecEra" = {
       convsymmBEV = 2035
@@ -40,6 +41,7 @@ lvl1_preftrend <- function(SWS, calibdem, incocost, years, GDP, GDP_POP_MER, sma
       speedHydrogenAir = 5
       speedFCEV = 5
       convsymmFCEV = 2045
+      railTargetYear = 2100
     },
     "HydrHype" = {
       convsymmBEV = 2045
@@ -51,6 +53,7 @@ lvl1_preftrend <- function(SWS, calibdem, incocost, years, GDP, GDP_POP_MER, sma
       ## BEV busses and heavy trucks constrained
       convsymmBEVlongDist = 2065
       speedBEVlongDist = 5
+      railTargetYear = 2100
     },
     "Mix" = {
       convsymmBEV = 2045
@@ -59,6 +62,7 @@ lvl1_preftrend <- function(SWS, calibdem, incocost, years, GDP, GDP_POP_MER, sma
       speedHydrogenAir = 5
       speedFCEV = 5
       convsymmFCEV = 2045
+      railTargetYear = 2100
     },
     "Mix4" = {
       convsymmBEV = 2045
@@ -67,6 +71,7 @@ lvl1_preftrend <- function(SWS, calibdem, incocost, years, GDP, GDP_POP_MER, sma
       speedHydrogenAir = 5
       speedFCEV = 5
       convsymmFCEV = 2045
+      railTargetYear = 2060
     },
     "Mix3" = {
       convsymmBEV = 2045
@@ -75,6 +80,7 @@ lvl1_preftrend <- function(SWS, calibdem, incocost, years, GDP, GDP_POP_MER, sma
       speedHydrogenAir = 5
       speedFCEV = 10
       convsymmFCEV = 2060
+      railTargetYear = 2075
     },
     "Mix2" = {
       convsymmBEV = 2050
@@ -83,6 +89,7 @@ lvl1_preftrend <- function(SWS, calibdem, incocost, years, GDP, GDP_POP_MER, sma
       speedHydrogenAir = 5
       speedFCEV = 10
       convsymmFCEV = 2080
+      railTargetYear = 2090
     },
     "Mix1" = {
       convsymmBEV = 2065
@@ -91,6 +98,7 @@ lvl1_preftrend <- function(SWS, calibdem, incocost, years, GDP, GDP_POP_MER, sma
       speedHydrogenAir = 5
       speedFCEV = 10
       convsymmFCEV = 2100
+      railTargetYear = 2090
     }
   )
 
@@ -273,7 +281,7 @@ if (tech_scen %in% c("ElecEra", "HydrHype")) {
 
   ## electric trains develop linearly to 2100
   SWS$FV_final_pref[technology == "Electric" & year >= 2020 & subsector_L3 %in% c("Passenger Rail", "HSR", "Freight Rail"),
-                    value := value[year==2020] + (1-value[year==2020]) * (year-2020)/(2100-2020),
+                    value := value[year==2020] + (1-value[year==2020]) * (year-2020)/(railTargetYear-2020),
                     by=c("region","vehicle_type","technology")]
 
 
@@ -355,7 +363,6 @@ if (tech_scen %in% c("ElecEra", "HydrHype")) {
   SWS$S3S_final_pref[subsector_L3 == "Passenger Rail" & region %in% c("JPN") & year >= 2010,
                      sw :=  ifelse(year <= 2100, sw[year==2010] + (0.2*sw[year==2010]-sw[year==2010]) * (year-2010) / (2100-2010), 0.2*sw[year==2010]),
                      by=c("region", "subsector_L3")]
-
 
   SWS$S3S_final_pref[subsector_L3 == "Cycle" & region %in% "REF" & year >= 2010,
                      sw := ifelse(year==2010, sw, 3*sw[year==2010]),
