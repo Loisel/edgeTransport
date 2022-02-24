@@ -1521,7 +1521,7 @@ compScenEDGET <- function(listofruns, hist, y_bar = c(2010, 2030, 2050, 2100),
 
 
 
-  swlatex(sw, "\\subsubsection{Energy Services line plots}")
+  swlatex(sw, "\\subsection{Energy Services line plots}")
 
   vars <- c(
 
@@ -1559,7 +1559,7 @@ compScenEDGET <- function(listofruns, hist, y_bar = c(2010, 2030, 2050, 2100),
 
 
 
-  swlatex(sw, "\\subsubsection{Energy Services for Passenger Transport (per Capita, year)}")
+  swlatex(sw, "\\subsection{Energy Services for Passenger Transport (per Capita, year)}")
 
   ES_pass <- copy(plot_Energy_services)
   ES_pass <- ES_pass[sector %in% c("trn_pass", "trn_aviation_intl")][, variable := "ES|Transport|Pass"]
@@ -1609,7 +1609,7 @@ compScenEDGET <- function(listofruns, hist, y_bar = c(2010, 2030, 2050, 2100),
                         global = FALSE, per_gdp = TRUE)
   swfigure(sw, print, p, sw_option = "height=9,width=16")
 
-  swlatex(sw, "\\subsubsection{Energy Intensity line plots}")
+  swlatex(sw, "\\subsection{Energy Intensity line plots}")
 
   vars <- c(
 
