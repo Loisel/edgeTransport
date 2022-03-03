@@ -15,7 +15,7 @@ lvl2_demandReg(tech_output, price_baseline, GDP_POP, smartlifestyle, SSP_scen)
 
 \item{smartlifestyle}{switch activating sustainable lifestyles}
 
-\item{SSP_scen}{REMIND SSP scenario}
+\item{SSP_scen}{SSP scenario}
 }
 \value{
 transport demand projections
