@@ -8667,16 +8667,16 @@ SSP2EU,DEU,,,,,Cycle,trn_pass,S3S,linear,2.500e-02,2.500e-02,2.500e-02,1.875e-01
 SSP2EU,DEU,,,,,Domestic Aviation,trn_pass,S3S,linear,5.965e-05,5.965e-05,5.965e-05,5.965e-05,5.965e-05
 SSP2EU,DEU,,,,,Domestic Ship,trn_freight,S3S,linear,2.127e-03,2.127e-03,2.127e-03,2.127e-03,2.127e-03
 SSP2EU,DEU,,,,,Freight Rail,trn_freight,S3S,linear,2.800e-02,2.800e-02,2.800e-02,2.800e-02,2.800e-02
-SSP2EU,DEU,,,,,HSR,trn_pass,S3S,linear,1.250e-04,2.500e-04,6.250e-04,6.250e-04,6.250e-04
+SSP2EU,DEU,,,,,HSR,trn_pass,S3S,linear,1.346e-04,2.500e-04,6.250e-04,6.250e-04,6.250e-04
 SSP2EU,DEU,,,,,International Aviation,trn_aviation_intl,S3S,linear,1.000e+00,1.000e+00,1.000e+00,1.000e+00,1.000e+00
 SSP2EU,DEU,,,,,International Ship,trn_shipping_intl,S3S,linear,1.000e+00,1.000e+00,1.000e+00,1.000e+00,1.000e+00
-SSP2EU,DEU,,,,,Passenger Rail,trn_pass,S3S,linear,2.500e-03,3.750e-03,3.750e-03,3.750e-03,3.750e-03
+SSP2EU,DEU,,,,,Passenger Rail,trn_pass,S3S,linear,2.692e-03,3.750e-03,3.750e-03,3.750e-03,3.750e-03
 SSP2EU,DEU,,,,,Walk,trn_pass,S3S,linear,1.000e+00,1.000e+00,1.000e+00,1.000e+00,1.000e+00
 SSP2EU,DEU,,,,,trn_freight_road,trn_freight,S3S,linear,1.000e+00,1.000e+00,1.000e+00,1.000e+00,1.000e+00
-SSP2EU,DEU,,,,,trn_pass_road,trn_pass,S3S,linear,7.363e-02,7.363e-02,7.363e-02,7.363e-02,7.363e-02
-SSP2EU,DEU,,,,Bus,trn_pass_road,trn_pass,S2S3,linear,8.149e-02,8.149e-02,8.149e-02,1.528e-01,1.528e-01
+SSP2EU,DEU,,,,,trn_pass_road,trn_pass,S3S,linear,5.664e-02,7.363e-02,7.363e-02,7.363e-02,7.363e-02
+SSP2EU,DEU,,,,Bus,trn_pass_road,trn_pass,S2S3,linear,4.075e-02,8.149e-02,8.149e-02,1.528e-01,1.528e-01
 SSP2EU,DEU,,,,trn_pass_road_LDV,trn_pass_road,trn_pass,S2S3,linear,1.000e+00,1.000e+00,1.000e+00,1.000e+00,1.000e+00
-SSP2EU,DEU,,,trn_pass_road_LDV_2W,trn_pass_road_LDV,trn_pass_road,trn_pass,S1S2,linear,3.054e-02,3.054e-02,3.054e-02,3.054e-02,3.054e-02
+SSP2EU,DEU,,,trn_pass_road_LDV_2W,trn_pass_road_LDV,trn_pass_road,trn_pass,S1S2,linear,3.970e-02,3.054e-02,3.054e-02,3.054e-02,3.054e-02
 SSP2EU,DEU,,,trn_pass_road_LDV_4W,trn_pass_road_LDV,trn_pass_road,trn_pass,S1S2,linear,1.000e+00,1.000e+00,1.000e+00,1.000e+00,1.000e+00
 SSP2EU,DEU,,Compact Car,trn_pass_road_LDV_4W,trn_pass_road_LDV,trn_pass_road,trn_pass,VS1,linear,5.249e-01,5.249e-01,4.724e-01,4.724e-01,4.724e-01
 SSP2EU,DEU,,Large Car and SUV,trn_pass_road_LDV_4W,trn_pass_road_LDV,trn_pass_road,trn_pass,VS1,linear,1.000e+00,1.000e+00,1.000e+00,1.000e+00,1.000e+00

@@ -30,6 +30,16 @@ lvl0_mergeDat = function(UCD_output, EU_data, PSI_costs, GDP_MER, altCosts, CHN_
   k <- subsector_L2 <- tech_output <- MJ <- region <- loadFactor <- vehicle_type <- iso <- univocal_name <- technology <- weight <- NULL
   pkm_MJ_missing <- val <- markup <- UCD_technology <- valUCD <- gdpcap <- NULL
   subsector_L1 <- vkm.veh <- tot_purchasecost <- aveval <- incentive_val <- unit <- demldv <- NULL
+
+  ext_2100_to_2150 <- function(dt){
+    extyrs <- seq(2110, 2150, 20)
+    dt <- dt[year <= 2100]
+    dt <- rbind(
+      dt, rbindlist(lapply(extyrs, function(yr){
+        dt[year == 2100][, year := yr]})))
+    return(dt)
+  }
+
   logit_cat = copy(GCAM_data[["logit_category"]])
   logit_cat = rbind(logit_cat,
                     logit_cat[subsector_L1 == "trn_pass_road_LDV_4W" & technology == "BEV"][, technology := "Hybrid Electric"])
@@ -362,20 +372,17 @@ lvl0_mergeDat = function(UCD_output, EU_data, PSI_costs, GDP_MER, altCosts, CHN_
 
   ##merge with GCAM intensities and substitute all LDVs for EU and only alternative LDVs for other regions
   int_GCAM = GCAM_data[["conv_pkm_mj"]][!subsector_L1 %in% c("trn_pass_road_LDV_4W", "trn_freight_road_tmp_subsector_L1","Bus_tmp_subsector_L1")][, sector_fuel := NULL]
-  int_GCAM = rbind(int_GCAM,
-                   int_GCAM[year==2100][, year := 2110],
-                   int_GCAM[year==2100][, year := 2130],
-                   int_GCAM[year==2100][, year := 2150])
 
   int = rbind(Truck_PSI_i,
               LDV_PSI_i,
               int_GCAM)
+  int <- ext_2100_to_2150(int)
 
   ## ARIADNE intensity adjustments, source: DLR/HBEFA 4.2
 
   if(ariadne_adjustments){
     int[iso == "DEU" & subsector_L1 == "trn_pass_road_LDV_4W" & technology == "Liquids",
-        conv_pkm_MJ := conv_pkm_MJ * 2.3/2.0]
+        conv_pkm_MJ := conv_pkm_MJ * 2.3/2.8]
     int[iso == "DEU" & subsector_L1 == "trn_pass_road_LDV_4W" & technology == "BEV",
         conv_pkm_MJ := conv_pkm_MJ * 0.81/0.95]
     int[iso == "DEU" & subsector_L1 == "trn_pass_road_LDV_4W" & technology == "FCEV",
@@ -469,7 +476,8 @@ lvl0_mergeDat = function(UCD_output, EU_data, PSI_costs, GDP_MER, altCosts, CHN_
 
   LF = merge(LF, unique(dem[!vehicle_type %in% c("Cycle_tmp_vehicletype", "Walk_tmp_vehicletype"),c("iso", "vehicle_type", "technology", "subsector_L1", "subsector_L2", "subsector_L3", "sector",  "year")]), all.y = TRUE, by = c("iso", "vehicle_type", "technology", "subsector_L1", "subsector_L2", "subsector_L3", "sector",  "year"))
   LF[, loadFactor := ifelse(is.na(loadFactor), mean(loadFactor, na.rm = TRUE), loadFactor), by = c("year", "vehicle_type")]
-  LF[year > 2100, loadFactor := rep(LF[year == 2100]$loadFactor, 3)]
+  LF <- ext_2100_to_2150(LF)
+
   if(nrow(LF[is.na(loadFactor) | loadFactor == 0]) > 0){
     stop("Zero load factor provided.")
   }

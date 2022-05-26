@@ -65,7 +65,7 @@ lvl2_demandReg <- function(tech_output, price_baseline, GDP_POP, smartlifestyle,
       .[year <= 2100 & is.na(region_factor), region_factor := 0]
     
     income_el[year > 2100, region_factor := income_el[year == 2100, region_factor], by="year"]
-
+    browser()
     income_el[, eps := eps + region_factor]
   }
 
