@@ -10,7 +10,7 @@
 #' @importFrom rmndt magpie2dt
 #' @importFrom data.table fread
 
-toolPrepareGCAM <- function(magpieobj, subtype) {
+toolEDGETprepareGCAM <- function(magpieobj, subtype) {
   lstruct <- fread(system.file("extdata/logit_structure.csv", package="edgeTransport", mustWork=TRUE))
   dt <- magpie2dt(magpieobj)[year <= 2010]
   mapfile <- system.file("extdata", "mapping_GCAM_categories.csv",
@@ -75,6 +75,109 @@ toolPrepareGCAM <- function(magpieobj, subtype) {
         browser()
       }
     },
+    "energyIntensity" = {
+      ## weights only available for these years
+      dt <- dt[year %in% c(1990, 2005, 2010)]
+      weight <- readSource("GCAM", subtype="esDemand")
+      weight <- magpie2dt(weight)[, Units := NULL]
+      setnames(weight, "value", "esdem")
+
+      setnames(dt, c("tranSubsector", "stub_technology"), c("subsector", "technology"))
+      dt <- weight[dt, on=c("iso", "year", "subsector", "technology")]
+      ## using a very low demand leads to equal distribution if there is no demand
+      ## for all available technologies
+      dt[is.na(esdem) | esdem == 0, esdem := 1]
+
+      dt <- mapping_GCAM[dt, on="subsector"]
+      dt[is.na(vehicle_type), vehicle_type := subsector]
+
+      dt <- dt[, .(value=sum(value*esdem)/sum(esdem)),
+               by=c("iso", "year", "vehicle_type", "technology")]
+
+      dt <- dt[!technology %in% c("Coal", "Tech-Adv-Electric", "Adv-Electric",
+                                  "Hybrid Liquids", "Tech-Adv-Liquid", "Adv-Liquid")]
+
+      lstruct <- lstruct[!subsector_l3 %in% c("Walk", "Cycle")]
+      dt <- lstruct[dt, on=c("vehicle_type", "technology")]
+
+      dt <- rbind(
+        dt,
+        ## energy efficiency for hydrogen airplanes
+        ## http://dx.doi.org/10.1016/j.ijhydene.2015.04.055
+        dt[vehicle_type == "International Aviation_tmp_vehicletype" & technology == "Liquids"][
+          , `:=`(technology = "Hydrogen", value = 0.9 * value)],
+        dt[vehicle_type == "Domestic Aviation_tmp_vehicletype" & technology == "Liquids"][
+        , `:=`(technology = "Hydrogen", value = 0.85 * value)])
+
+      dt[, c("sector", "subsector_l3", "subsector_l2", "subsector_l1",
+             "univocal_name") := NULL]
+
+      dt <- dt[lstruct, on=c("vehicle_type", "technology")]
+
+      test <- dt[is.na(value)]
+      if(nrow(test) > 0){
+        print("Missing loadfactor data in GCAM prepare")
+        browser()
+      }
+
+      nc <- colnames(dt)[colnames(dt) != "value"]
+      test <- dt[, ..nc]
+      test <- test[duplicated(test)]
+      if(nrow(test) > 0){
+        print("Duplicates in loadfactor data in GCAM prepare")
+        browser()
+      }
+    },
+    "speedMotorized" = {
+      ## weights only available for these years
+      dt <- dt[year %in% c(1990, 2005, 2010)]
+      weight <- readSource("GCAM", subtype="esDemand")
+      weight <- magpie2dt(weight)[, Units := NULL]
+      setnames(weight, "value", "esdem")
+      weight <- weight[, .(esdem = sum(esdem)), by=c("iso", "year", "subsector")]
+
+      setnames(dt, "tranSubsector", "subsector")
+      dt <- weight[dt, on=c("iso", "year", "subsector")]
+      ## using a very low demand leads to equal distribution if there is no demand
+      ## for all available technologies
+      dt[is.na(esdem) | esdem == 0, esdem := 1]
+
+      dt <- mapping_GCAM[dt, on="subsector"]
+      dt[is.na(vehicle_type), vehicle_type := subsector]
+
+      dt <- dt[, .(value=sum(value*esdem)/sum(esdem)),
+               by=c("iso", "year", "vehicle_type")]
+
+      lstruct <- lstruct[!subsector_l3 %in% c("Walk", "Cycle")]
+      dt <- lstruct[dt, on="vehicle_type", allow.cartesian=TRUE]
+
+      ## join the other way round to see if data is complete
+      dt[, c("sector", "subsector_l3", "subsector_l2", "subsector_l1",
+             "univocal_name") := NULL]
+      dt <- dt[lstruct, on=c("vehicle_type", "technology")]
+
+      test <- dt[is.na(value)]
+      if(nrow(test) > 0){
+        print("Missing loadfactor data in GCAM prepare")
+        browser()
+      }
+
+      nc <- colnames(dt)[colnames(dt) != "value"]
+      test <- dt[, ..nc]
+      test <- test[duplicated(test)]
+      if(nrow(test) > 0) {
+        print("Duplicates in loadfactor data in GCAM prepare")
+        browser()
+      }
+    },
+    "speedNonMotorized" = {
+      lstruct <- lstruct[subsector_l3 %in% c("Walk", "Cycle")]
+      setnames(dt, "tranSubsector", "subsector")
+      dt <- mapping_GCAM[dt, on="subsector"]
+      dt[, c("subsector", "technology") := NULL]
+      dt <- lstruct[dt, on="vehicle_type"]
+      
+    },
     "loadFactor" = {
       ## weights only available for these years
       dt <- dt[year %in% c(1990, 2005, 2010)]
@@ -137,7 +240,7 @@ toolPrepareGCAM <- function(magpieobj, subtype) {
       }
     })
 
-  setnames(dt, "iso", "region")
+  setnames(dt, "iso", "region", skip_absent = TRUE)
   return(as.quitte(dt))
 
 }
@@ -155,7 +258,7 @@ toolPrepareGCAM <- function(magpieobj, subtype) {
 #' @importFrom rmndt magpie2dt
 #' @importFrom data.table fread
 
-toolPrepareTRACCS <- function(magpieobj, subtype) {
+toolEDGETprepareTRACCS <- function(magpieobj, subtype) {
   lstruct <- fread(system.file("extdata/logit_structure.csv", package="edgeTransport", mustWork=TRUE))
 
   ## load mappings
@@ -249,7 +352,7 @@ toolPrepareTRACCS <- function(magpieobj, subtype) {
 #' @importFrom rmndt magpie2dt
 #' @importFrom data.table fread
 
-toolPrepareUCD <- function(magpieobj, subtype) {
+toolEDGETprepareUCD <- function(magpieobj, subtype) {
   lstruct <- fread(system.file("extdata/logit_structure.csv", package="edgeTransport", mustWork=TRUE))
 
   ## mapping_UCD <- fread("~/git/edgeTransport/inst/extdata/mapping_UCD_categories.csv")

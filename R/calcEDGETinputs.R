@@ -14,8 +14,8 @@ calcEDGETinputs <- function(subtype, adjustments = TRUE) {
       ## are found in the data and extend the data to the other technologies
       ## i.e., FCEVs, BEVs. We fill some gaps and map the vehicle_types.
       ## we do not yet: 1) extend data to other regions or 2) to other vehicle_types
-      am_TRACCS <- toolPrepareTRACCS(readSource("TRACCS", subtype), subtype)
-      am_UCD <- toolPrepareUCD(readSource("UCD", subtype), subtype)
+      am_TRACCS <- toolEDGETprepareTRACCS(readSource("TRACCS", subtype), subtype)
+      am_UCD <- toolEDGETprepareUCD(readSource("UCD", subtype), subtype)
 
       am_TRACCS[, c("model", "scenario", "variable") := NULL]
       am_UCD[, c("model", "scenario", "variable") := NULL]
@@ -62,9 +62,6 @@ calcEDGETinputs <- function(subtype, adjustments = TRUE) {
       dt <- rbind(dt, planes, ships, use.names=TRUE)
 
       q <- as.quitte(dt)
-      if(adjustments) {
-        q <- toolAdjustData(q, subtype)
-      }
 
       ## check for missing data by joining the logit structure and looking for NAs,
       ## the join has to happen on subtype level since it does not make sense
@@ -84,23 +81,20 @@ calcEDGETinputs <- function(subtype, adjustments = TRUE) {
       fr_unit <- "million tkm"
       pa_unit <- "million pkm"
       ## the GCAM data is more-or-less complete, we use this as a starting point
-      es_GCAM <- toolPrepareGCAM(readSource("GCAM", subtype), subtype)
+      es_GCAM <- toolEDGETprepareGCAM(readSource("GCAM", subtype), subtype)
       es_GCAM[sector == "trn_freight", unit := fr_unit]
       es_GCAM[sector == "trn_pass", unit := pa_unit]
       es_GCAM[, c("model", "scenario", "variable") := NULL]
 
       es_TRACCS <- rbind(
-        toolPrepareTRACCS(readSource("TRACCS", "roadTkmDemand"), "roadTkmDemand")[, unit := fr_unit],
-        toolPrepareTRACCS(readSource("TRACCS", "roadPkmDemand"), "roadPkmDemand")[, unit := pa_unit]
+        toolEDGETprepareTRACCS(readSource("TRACCS", "roadTkmDemand"), "roadTkmDemand")[, unit := fr_unit],
+        toolEDGETprepareTRACCS(readSource("TRACCS", "roadPkmDemand"), "roadPkmDemand")[, unit := pa_unit]
       )[period %in% c(2005, 2010)]
       es_TRACCS[, c("model", "scenario", "variable") := NULL]
 
       es_GCAM[es_TRACCS, value := i.value, on=colnames(es_GCAM)[1:10]]
 
       q <- as.quitte(es_GCAM)
-      if(adjustments) {
-        q <- toolAdjustData(q, subtype)
-      }
 
       ## expand and check
       q <- q[lstruct, on=intersect(colnames(q), colnames(lstruct))]
@@ -114,12 +108,12 @@ calcEDGETinputs <- function(subtype, adjustments = TRUE) {
     "loadFactor" = {
       fr_unit <- "tkm/veh"
       pa_unit <- "pkm/veh"
-      lf_GCAM <- toolPrepareGCAM(readSource("GCAM", subtype), subtype)
+      lf_GCAM <- toolEDGETprepareGCAM(readSource("GCAM", subtype), subtype)
       lf_GCAM[sector == "trn_freight", unit := fr_unit]
       lf_GCAM[sector == "trn_pass", unit := pa_unit]
       lf_GCAM[, c("model", "scenario", "variable") := NULL]
 
-      lf_TRACCS <- toolPrepareTRACCS(readSource("TRACCS", "loadFactor"), "loadFactor")
+      lf_TRACCS <- toolEDGETprepareTRACCS(readSource("TRACCS", "loadFactor"), "loadFactor")
       lf_TRACCS[sector == "trn_freight", unit := fr_unit]
       lf_TRACCS[sector == "trn_pass", unit := pa_unit]
       lf_TRACCS[, c("model", "scenario", "variable") := NULL]
@@ -127,9 +121,6 @@ calcEDGETinputs <- function(subtype, adjustments = TRUE) {
       lf_GCAM[lf_TRACCS, value := i.value, on=colnames(lf_GCAM)[1:10]]
 
       q <- as.quitte(lf_GCAM)
-      if(adjustments) {
-        q <- toolAdjustData(q, subtype)
-      }
 
       ## expand and check
       lstruct <- lstruct[!subsector_l3 %in% c("Walk", "Cycle")]
@@ -139,6 +130,29 @@ calcEDGETinputs <- function(subtype, adjustments = TRUE) {
       unit <- sprintf("%s or %s", pa_unit, fr_unit)
       description <- "Load factor, also called occupancy ration for passenger vehicles. Sources: TRACCS, GCAM."
 
+    },
+
+    "energyIntensity" = {
+      unit <- "MJ/vkm"
+      intGCAM <- toolEDGETprepareGCAM(readSource("GCAM", "feVkmIntensity"), subtype)
+      CONV_MJ_btu <- 947.777
+      intGCAM[, value := value/CONV_MJ_btu]
+    },
+
+    "speed" = {
+      unit <- "unknown"
+      magpieobj <- readSource("GCAM", "speedNonMotorized")
+      mo2 <- readSource("GCAM", "speedNonMotorized")
+      q <- rbind(
+        toolEDGETprepareGCAM(readSource("GCAM", "speedMotorized"), "speedMotorized"),
+        toolEDGETprepareGCAM(readSource("GCAM", "speedNonMotorized"), "speedNonMotorized"))
+
+      ## expand and check
+      q <- q[lstruct, on=intersect(colnames(q), colnames(lstruct))]
+
+      weight <- calcOutput("GDP", aggregate = F)[, unique(q$period), "gdp_SSP2"]
+      unit <- "unknown"
+      description <- "Vehicle speed. Source: GCAM."
     }
   )
 
@@ -155,6 +169,11 @@ calcEDGETinputs <- function(subtype, adjustments = TRUE) {
     print(sprintf("Duplicated elements in inputdata subtype %s.", subtype))
     browser()
   }
+
+  if(adjustments) {
+    q <- toolEDGETadjustments(q, subtype)
+  }
+
 
   return(list(
     x           = as.magpie(as.data.frame(q)),

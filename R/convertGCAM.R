@@ -20,6 +20,10 @@ convertGCAM <- function(x, subtype) {
   } else if (subtype %in% c("feVkmIntensity", "loadFactor", "speedMotorized")) {
     x <- toolAggregate(x, rel = GCAM2iso)
     getSets(x)["d1.1"] <- "iso"
+  } else if (subtype == "speedNonMotorized") {
+    newmp <- new.magpie(cells_and_regions = unique(GCAM2iso$iso), years=c(1990, 2005, 2010),
+                        names="value", fill=1)
+    x <- collapseDim(x * newmp)
   } else {
     stop(sprintf("The following subtype does not support conversion to ISO countries: %s Please use convert=FALSE.", subtype))
   }

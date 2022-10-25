@@ -8,7 +8,7 @@
 #' @importFrom rmndt magpie2dt
 #' @importFrom data.table fread
 
-toolAdjustData <- function(qobj, subtype) {
+toolEDGETadjustments <- function(qobj, subtype) {
   ## Comment: Maybe this function has to be split in toolAdjustIntensity etc.
   ## since the dis/aggregation of vehicle classes etc might be quite lengthy
   dt <- as.data.table(qobj)
