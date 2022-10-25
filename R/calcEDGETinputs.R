@@ -140,7 +140,7 @@ calcEDGETinputs <- function(subtype, adjustments = TRUE) {
     },
 
     "speed" = {
-      unit <- "unknown"
+      unit <- "km/h"
       magpieobj <- readSource("GCAM", "speedNonMotorized")
       mo2 <- readSource("GCAM", "speedNonMotorized")
       q <- rbind(
