@@ -14,30 +14,39 @@ calcEDGETinputs <- function(subtype, adjustments = TRUE) {
       ## are found in the data and extend the data to the other technologies
       ## i.e., FCEVs, BEVs. We fill some gaps and map the vehicle_types.
       ## we do not yet: 1) extend data to other regions or 2) to other vehicle_types
-      am_TRACCS <- toolEDGETprepareTRACCS(readSource("TRACCS", subtype), subtype)
-      am_UCD <- toolEDGETprepareUCD(readSource("UCD", subtype), subtype)
-
-      am_TRACCS[, c("model", "scenario", "variable") := NULL]
-      am_UCD[, c("model", "scenario", "variable") := NULL]
-
-      am_UCD[, unit := am_unit]
-      am_TRACCS[, unit := am_unit]
+      dt <- toolEDGETprepareUCD(readSource("UCD", subtype), subtype)
+      dt[, c("model", "scenario", "variable") := NULL]
+      dt[, unit := am_unit]
 
       ## use same periods in both sources
+      dt <- rbind(dt[period == 2005], dt[period == 2005][, period := 2010])
+
+      am_TRACCS <- toolEDGETprepareTRACCS(readSource("TRACCS", subtype), subtype)
+      am_TRACCS[, c("model", "scenario", "variable") := NULL]
+      am_TRACCS[, unit := am_unit]
       am_TRACCS <- am_TRACCS[period %in% c(2005, 2010)]
-      am_UCD <- rbind(am_UCD[period == 2005], am_UCD[period == 2005][, period := 2010])
+
+      ## add missing "other techs"
+      lstruct <- lstruct[vehicle_type %in% unique(am_TRACCS$vehicle_type)]
+      full_table <- CJ(region=am_TRACCS$region, period=am_TRACCS$period,
+                       vehicle_type=am_TRACCS$vehicle_type,
+                       technology=lstruct$technology, unit=am_TRACCS$unit, unique=T)
+      am_TRACCS <- am_TRACCS[full_table, on=c("region", "period", "vehicle_type", "technology", "unit")]
+      am_TRACCS[, value := ifelse(is.na(value), .SD[technology == "Liquids", value], value),
+         by=c("region", "period", "vehicle_type")]
+      am_TRACCS <- am_TRACCS[lstruct, on=c("vehicle_type", "technology")]
 
       ## trucks mileage and buses only from TRACCS, this has to be applied to UCD
       tm <- am_TRACCS[subsector_l2 %in% c("Bus" ,"trn_freight_road_tmp_subsector_L2")]
       ## use mean values for non-TRACCS countries
       tm <- tm[, .(value = mean(value)), by=c("period", "vehicle_type")]
 
-      nonTRACCS_tm <- CJ(region=am_UCD$region, period=tm$period, unique=TRUE)
+      nonTRACCS_tm <- CJ(region=dt$region, period=tm$period, unique=TRUE)
       nonTRACCS_tm <- nonTRACCS_tm[tm, on="period", allow.cartesian=TRUE]
       nonTRACCS_tm <- lstruct[nonTRACCS_tm, on="vehicle_type", allow.cartesian=TRUE]
-      nonTRACCS_tm[, unit := unique(am_UCD$unit)]
+      nonTRACCS_tm[, unit := unique(dt$unit)]
 
-      dt <- rbind(am_UCD, nonTRACCS_tm, use.names=TRUE, fill=TRUE)
+      dt <- rbind(dt, nonTRACCS_tm, use.names=TRUE, fill=TRUE)
 
       ## update-join - prefer TRACCS values wherever we have them
       ## dt[, traccs_value := am_TRACCS[.SD, on=colnames(dt)[1:10], x.value]]
@@ -81,10 +90,55 @@ calcEDGETinputs <- function(subtype, adjustments = TRUE) {
       fr_unit <- "million tkm"
       pa_unit <- "million pkm"
       ## the GCAM data is more-or-less complete, we use this as a starting point
-      es_GCAM <- toolEDGETprepareGCAM(readSource("GCAM", subtype), subtype)
-      es_GCAM[sector == "trn_freight", unit := fr_unit]
-      es_GCAM[sector == "trn_pass", unit := pa_unit]
-      es_GCAM[, c("model", "scenario", "variable") := NULL]
+      dt <- toolEDGETprepareGCAM(readSource("GCAM", subtype), subtype)
+      dt[sector == "trn_freight", unit := fr_unit]
+      dt[sector == "trn_pass", unit := pa_unit]
+      dt[, c("model", "scenario", "variable") := NULL]
+      full <- rbind(
+        CJ(region=dt$region, period=dt$period, vehicle_type="Walk_tmp_vehicletype",
+           technology="Walk_tmp_technology", unit=pa_unit, unique=TRUE),
+        CJ(region=dt$region, period=dt$period, vehicle_type="Cycle_tmp_vehicletype",
+           technology="Cycle_tmp_technology", unit=pa_unit, unique=TRUE),
+        CJ(region=dt$region, period=dt$period,
+           vehicle_type=c("International Aviation_tmp_vehicletype", "Domestic Aviation_tmp_vehicletype"),
+           technology="Hydrogen", unit=pa_unit, unique=TRUE),
+        CJ(region=dt$region, period=dt$period,
+           vehicle_type=unique(dt[subsector_l1 == "trn_pass_road_LDV_4W", vehicle_type]),
+           technology="Hybrid Electric", unit=pa_unit, unique=TRUE),
+        CJ(region=dt$region, period=dt$period,
+           vehicle_type="Bus_tmp_vehicletype",
+           technology="BEV", unit=pa_unit, unique=TRUE),
+        CJ(region=dt$region, period=dt$period,
+           vehicle_type="Bus_tmp_vehicletype",
+           technology="FCEV", unit=pa_unit, unique=TRUE),
+        CJ(region=dt$region, period=dt$period,
+           vehicle_type=unique(dt[subsector_l3 == "trn_freight_road", vehicle_type]),
+           technology="BEV", unit=fr_unit, unique=TRUE),
+        CJ(region=dt$region, period=dt$period,
+           vehicle_type=unique(dt[subsector_l3 == "trn_freight_road", vehicle_type]),
+           technology="FCEV", unit=fr_unit, unique=TRUE))
+
+      dt[, c("sector", "subsector_l3", "subsector_l2", "subsector_l1", "univocal_name") := NULL]
+      dt <- rbind(
+        dt,
+        dt[full, on=c("region", "period", "vehicle_type", "technology", "unit")]
+      )
+      ## cycle and walk has to be replaced by global averages (this data is simply missing)
+      dt[, total := sum(value, na.rm=TRUE), by=c("region", "period")]
+      dt[vehicle_type == "Cycle_tmp_vehicletype", share := value/total]
+      dt[, mean_share := mean(share, na.rm=TRUE), by="period"]
+      dt[vehicle_type == "Cycle_tmp_vehicletype" & is.na(value), value := total * mean_share]
+      dt[, c("share", "mean_share") := NULL]
+
+      dt[vehicle_type == "Walk_tmp_vehicletype", share := value/total]
+      dt[, mean_share := mean(share, na.rm=TRUE), by="period"]
+      dt[vehicle_type == "Walk_tmp_vehicletype" & is.na(value), value := total * mean_share]
+      dt[, c("share", "mean_share", "total") := NULL]
+      ## everything else is probably 0
+      dt[is.na(value), value := 0]
+      ## full structure so that we can replace values
+      dt <- dt[lstruct, on=c("vehicle_type", "technology")]
+
 
       es_TRACCS <- rbind(
         toolEDGETprepareTRACCS(readSource("TRACCS", "roadTkmDemand"), "roadTkmDemand")[, unit := fr_unit],
@@ -92,9 +146,9 @@ calcEDGETinputs <- function(subtype, adjustments = TRUE) {
       )[period %in% c(2005, 2010)]
       es_TRACCS[, c("model", "scenario", "variable") := NULL]
 
-      es_GCAM[es_TRACCS, value := i.value, on=colnames(es_GCAM)[1:10]]
+      dt[es_TRACCS, value := i.value, on=colnames(dt)[1:10]]
 
-      q <- as.quitte(es_GCAM)
+      q <- as.quitte(dt)
 
       ## expand and check
       q <- q[lstruct, on=intersect(colnames(q), colnames(lstruct))]
@@ -108,19 +162,42 @@ calcEDGETinputs <- function(subtype, adjustments = TRUE) {
     "loadFactor" = {
       fr_unit <- "tkm/veh"
       pa_unit <- "pkm/veh"
-      lf_GCAM <- toolEDGETprepareGCAM(readSource("GCAM", subtype), subtype)
-      lf_GCAM[sector == "trn_freight", unit := fr_unit]
-      lf_GCAM[sector == "trn_pass", unit := pa_unit]
-      lf_GCAM[, c("model", "scenario", "variable") := NULL]
+      dt <- toolEDGETprepareGCAM(readSource("GCAM", subtype), subtype)
+      dt[sector == "trn_freight", unit := fr_unit]
+      dt[sector == "trn_pass", unit := pa_unit]
+      dt[, c("model", "scenario", "variable") := NULL]
+
+      dt <- rbind(
+        dt,
+        dt[vehicle_type == "International Aviation_tmp_vehicletype" & technology == "Liquids"][
+          , technology := "Hydrogen"],
+        dt[vehicle_type == "Domestic Aviation_tmp_vehicletype" & technology == "Liquids"][
+          , technology := "Hydrogen"],
+        dt[subsector_l1 == "trn_pass_road_LDV_4W" & technology == "Liquids"][
+          , technology := "Hybrid Electric"],
+        dt[vehicle_type == "Bus_tmp_vehicletype" & technology == "Liquids"][
+          , technology := "BEV"],
+        dt[vehicle_type == "Bus_tmp_vehicletype" & technology == "Liquids"][
+          , technology := "FCEV"],
+        dt[subsector_l3 == "trn_freight_road" & technology == "Liquids"][
+          , technology := "BEV"],
+        dt[subsector_l3 == "trn_freight_road" & technology == "Liquids"][
+          , technology := "FCEV"])
+
+      ## full structure
+      dt[, c("sector", "subsector_l3", "subsector_l2", "subsector_l1",
+             "univocal_name") := NULL]
+      dt <- dt[lstruct, on=c("vehicle_type", "technology")]
+
 
       lf_TRACCS <- toolEDGETprepareTRACCS(readSource("TRACCS", "loadFactor"), "loadFactor")
       lf_TRACCS[sector == "trn_freight", unit := fr_unit]
       lf_TRACCS[sector == "trn_pass", unit := pa_unit]
       lf_TRACCS[, c("model", "scenario", "variable") := NULL]
 
-      lf_GCAM[lf_TRACCS, value := i.value, on=colnames(lf_GCAM)[1:10]]
+      dt[lf_TRACCS, value := i.value, on=colnames(dt)[1:10]]
 
-      q <- as.quitte(lf_GCAM)
+      q <- as.quitte(dt)
 
       ## expand and check
       lstruct <- lstruct[!subsector_l3 %in% c("Walk", "Cycle")]
