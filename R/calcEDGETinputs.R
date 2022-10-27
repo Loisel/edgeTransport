@@ -211,9 +211,45 @@ calcEDGETinputs <- function(subtype, adjustments = TRUE) {
 
     "energyIntensity" = {
       unit <- "MJ/vkm"
-      intGCAM <- toolEDGETprepareGCAM(readSource("GCAM", "feVkmIntensity"), subtype)
+      dt <- toolEDGETprepareGCAM(readSource("GCAM", "feVkmIntensity"), subtype)
+      dt[, c("model", "scenario", "variable") := NULL]
       CONV_MJ_btu <- 947.777
-      intGCAM[, value := value/CONV_MJ_btu]
+      dt[, value := value/CONV_MJ_btu]
+      lstruct <- lstruct[!subsector_l3 %in% c("Walk", "Cycle")]
+
+      ## full structure
+      setkey(lstruct[, k := 1], "k")
+      full <- setkey(CJ(region=dt$region, period=dt$period, k=1, unique=TRUE), "k")
+      full <- lstruct[full, allow.cartesian=TRUE][, k := NULL]
+
+      dt <- dt[full, on=intersect(colnames(dt), colnames(full))]
+
+      intUCD <- toolEDGETprepareUCD(readSource("UCD", "feVkmIntensity"), subtype)
+      intUCD <- rbind(intUCD,
+                      intUCD[period == 2005][, period := 2010],
+                      intUCD[period == 2005][, period := 1990])
+
+      ## we use UCD timesteps
+      dt <- dt[period %in% unique(intUCD$period)]
+
+      ## update from UCD
+      dt[intUCD, value := i.value, on=colnames(dt)[1:10]]
+
+
+      ## PSI data
+
+
+      dt <- rbind(
+        dt,
+        ## energy efficiency for hydrogen airplanes
+        ## http://dx.doi.org/10.1016/j.ijhydene.2015.04.055
+        dt[vehicle_type == "International Aviation_tmp_vehicletype" & technology == "Liquids"][
+          , `:=`(technology = "Hydrogen", value = 0.9 * value)],
+        dt[vehicle_type == "Domestic Aviation_tmp_vehicletype" & technology == "Liquids"][
+        , `:=`(technology = "Hydrogen", value = 0.85 * value)])
+
+
+
     },
 
     "speed" = {

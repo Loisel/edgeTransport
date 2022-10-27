@@ -20,17 +20,20 @@ readGCAM <- function(subtype = c(
     "feVkmIntensity" = {
       dt <- fread("L254.StubTranTechCoef.csv", skip=4)[, market.name := NULL]
       setnames(dt, gsub(".", "_", colnames(dt), fixed=TRUE))
+      setnames(dt, "stub_technology", "GCAM_technology")
       mp <- as.magpie(as.data.frame(dt), temporal=5, spatial=1)
     },
     "loadFactor" = {
       dt <- fread("L254.StubTranTechLoadFactor.csv", skip=4)
       setnames(dt, gsub(".", "_", colnames(dt), fixed=TRUE))
+      setnames(dt, "stub_technology", "GCAM_technology")
       mp <- as.magpie(as.data.frame(dt), temporal=5, spatial=1)
     },
     "esDemand" = {
       dt <- fread("tech_output.csv", skip = 1, sep=";", header = T) %>%
         melt(measure.vars=6:26, variable.name = "year")
       dt[, scenario := NULL]
+      setnames(dt, "technology", "GCAM_technology")
       mp <- as.magpie(as.data.frame(dt), temporal=6, spatial=1)
     },
     "speedMotorized" = {
@@ -40,6 +43,7 @@ readGCAM <- function(subtype = c(
     "speedNonMotorized" = {
       dt <- fread("A54.globaltech_nonmotor.csv", skip=1, header=T)
       setnames(dt, gsub(".", "_", colnames(dt), fixed=TRUE))
+      setnames(dt, "technology", "GCAM_technology")
       dt[, share_weight := NULL]
       mp <- as.magpie(dt, datacol=3)
     },

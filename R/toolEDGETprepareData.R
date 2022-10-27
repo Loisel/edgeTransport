@@ -12,16 +12,22 @@
 
 toolEDGETprepareGCAM <- function(magpieobj, subtype) {
   lstruct <- fread(system.file("extdata/logit_structure.csv", package="edgeTransport", mustWork=TRUE))
-  dt <- magpie2dt(magpieobj)[year <= 2010]
+  dt <- magpie2dt(magpieobj)
   mapfile <- system.file("extdata", "mapping_GCAM_categories.csv",
                          package = "edgeTransport", mustWork = TRUE)
-  mapping_GCAM = fread(mapfile)
+  mapping_GCAM_cat = fread(mapfile)
+
+  mapfile <- system.file("extdata", "mapping_GCAM_technologies.csv",
+                         package = "edgeTransport", mustWork = TRUE)
+  mapping_GCAM_tech = fread(mapfile)
 
   switch(
     subtype,
     "esDemand" = {
-      dt <- mapping_GCAM[dt, on="subsector"]
+      dt <- mapping_GCAM_cat[dt, on="subsector"]
       dt[is.na(vehicle_type), vehicle_type := subsector]
+      dt <- mapping_GCAM_tech[dt, on="GCAM_technology"]
+      dt[is.na(technology), technology := GCAM_technology]
       dt <- unique(dt[, .(value=sum(value)), by=c("iso", "year", "vehicle_type", "technology", "Units")])
       ## add full logit
       setnames(dt, "Units", "unit")
@@ -31,31 +37,26 @@ toolEDGETprepareGCAM <- function(magpieobj, subtype) {
 
     },
     "energyIntensity" = {
-      ## weights only available for these years
-      dt <- dt[year %in% c(1990, 2005, 2010)]
+      ## we use 2010 weights, this is sufficient
       weight <- readSource("GCAM", subtype="esDemand")
-      weight <- magpie2dt(weight)[, Units := NULL]
+      weight <- magpie2dt(weight)[year == 2010][, c("year", "Units") := NULL]
       setnames(weight, "value", "esdem")
 
-      setnames(dt, c("tranSubsector", "stub_technology"), c("subsector", "technology"))
-      dt <- weight[dt, on=c("iso", "year", "subsector", "technology")]
+      setnames(dt, "tranSubsector", "subsector")
+      dt <- weight[dt, on=c("iso", "subsector", "GCAM_technology")]
       ## using a very low demand leads to equal distribution if there is no demand
       ## for all available technologies
-      dt[is.na(esdem) | esdem == 0, esdem := 1]
+      dt[is.na(esdem) | esdem == 0, esdem := min(dt$value, na.rm=TRUE)/100]
 
-      dt <- mapping_GCAM[dt, on="subsector"]
+      dt <- mapping_GCAM_cat[dt, on="subsector"]
       dt[is.na(vehicle_type), vehicle_type := subsector]
+      dt <- mapping_GCAM_tech[dt, on="GCAM_technology"]
+      dt[is.na(technology), technology := GCAM_technology]
 
       dt <- dt[, .(value=sum(value*esdem)/sum(esdem)),
                by=c("iso", "year", "vehicle_type", "technology")]
 
-      dt <- dt[!technology %in% c("Coal", "Tech-Adv-Electric", "Adv-Electric",
-                                  "Hybrid Liquids", "Tech-Adv-Liquid", "Adv-Liquid")]
-
-      lstruct <- lstruct[, .(vehicle_type, technology)][unique(dt[, .(vehicle_type, technology)]),
-                                                        on=c("vehicle_type", "technology")]
-
-      dt <- dt[lstruct, on=c("vehicle_type", "technology")]
+      dt <- lstruct[dt, on=c("vehicle_type", "technology")]
 
     },
     "speedMotorized" = {
@@ -70,9 +71,9 @@ toolEDGETprepareGCAM <- function(magpieobj, subtype) {
       dt <- weight[dt, on=c("iso", "year", "subsector")]
       ## using a very low demand leads to equal distribution if there is no demand
       ## for all available technologies
-      dt[is.na(esdem) | esdem == 0, esdem := 1]
+      dt[is.na(esdem) | esdem == 0, esdem := min(dt$value, na.rm=TRUE)/100]
 
-      dt <- mapping_GCAM[dt, on="subsector"]
+      dt <- mapping_GCAM_cat[dt, on="subsector"]
       dt[is.na(vehicle_type), vehicle_type := subsector]
 
       dt <- dt[, .(value=sum(value*esdem)/sum(esdem)),
@@ -90,7 +91,7 @@ toolEDGETprepareGCAM <- function(magpieobj, subtype) {
     "speedNonMotorized" = {
       lstruct <- lstruct[subsector_l3 %in% c("Walk", "Cycle")]
       setnames(dt, "tranSubsector", "subsector")
-      dt <- mapping_GCAM[dt, on="subsector"]
+      dt <- mapping_GCAM_cat[dt, on="subsector"]
       dt[, c("subsector", "technology") := NULL]
       dt <- lstruct[dt, on="vehicle_type"]
 
@@ -102,20 +103,19 @@ toolEDGETprepareGCAM <- function(magpieobj, subtype) {
       weight <- magpie2dt(weight)[, Units := NULL]
       setnames(weight, "value", "esdem")
 
-      setnames(dt, c("tranSubsector", "stub_technology"), c("subsector", "technology"))
-      dt <- weight[dt, on=c("iso", "year", "subsector", "technology")]
+      setnames(dt, c("tranSubsector", "stub_technology"), c("subsector", "GCAM_technology"))
+      dt <- weight[dt, on=c("iso", "year", "subsector", "GCAM_technology")]
       ## using a very low demand leads to equal distribution if there is no demand
       ## for all available technologies
-      dt[is.na(esdem) | esdem == 0, esdem := 1]
+      dt[is.na(esdem) | esdem == 0, esdem := min(dt$value, na.rm=TRUE)/100]
 
-      dt <- mapping_GCAM[dt, on="subsector"]
+      dt <- mapping_GCAM_cat[dt, on="subsector"]
       dt[is.na(vehicle_type), vehicle_type := subsector]
+      dt <- mapping_GCAM_tech[dt, on="GCAM_technology"]
+      dt[is.na(technology), technology := GCAM_technology]
 
       dt <- dt[, .(value=sum(value*esdem)/sum(esdem)),
                by=c("iso", "year", "vehicle_type", "technology")]
-
-      dt <- dt[!technology %in% c("Coal", "Tech-Adv-Electric", "Adv-Electric",
-                                  "Hybrid Liquids", "Tech-Adv-Liquid", "Adv-Liquid")]
 
       lstruct <- lstruct[!subsector_l3 %in% c("Walk", "Cycle")]
       dt <- lstruct[dt, on=c("vehicle_type", "technology")]
@@ -245,12 +245,17 @@ toolEDGETprepareUCD <- function(magpieobj, subtype) {
   lstruct <- fread(system.file("extdata/logit_structure.csv", package="edgeTransport", mustWork=TRUE))
 
   ## mapping_UCD <- fread("~/git/edgeTransport/inst/extdata/mapping_UCD_categories.csv")
-  mapfile <- system.file("extdata", "mapping_UCD_categories.csv",
+  mapfile_cat <- system.file("extdata", "mapping_UCD_categories.csv",
                              package = "edgeTransport", mustWork = TRUE)
-  mapping_UCD = fread(mapfile, skip = 0)
+  mapping_UCD_cat = fread(mapfile_cat, skip = 0)
+
+  mapfile_tech <- system.file("extdata", "mapping_UCD_technologies.csv",
+                             package = "edgeTransport", mustWork = TRUE)
+  mapping_UCD_tech = fread(mapfile_tech, skip = 0)
 
   weight <- readSource("UCD", subtype="feDemand")
   weight <- magpie2dt(weight)[, unit := NULL]
+  weight <- weight[, year := NULL]
 
   dt <- magpie2dt(magpieobj)
   setnames(weight, "value", "fe")
@@ -259,15 +264,30 @@ toolEDGETprepareUCD <- function(magpieobj, subtype) {
     subtype,
     "annualMileage" = {
       ## fe data only available for 2005
-      weight <- weight[, year := NULL]
       wcols <- c("iso", "UCD_sector", "mode", "size_class")
       weight <- weight[, .(fe=sum(fe), UCD_technology="All", UCD_fuel="All"), by=wcols]
       dt <- weight[dt, on=c(wcols, "UCD_technology", "UCD_fuel")]
 
-      dt <- mapping_UCD[dt, on=c("UCD_sector", "mode", "size_class")]
+      dt <- mapping_UCD_cat[dt, on=c("UCD_sector", "mode", "size_class")]
       dt <- unique(dt[, .(unit, value=sum(value*fe)/sum(fe)), by=c("iso", "year", "vehicle_type")])
       dt <- lstruct[dt, on="vehicle_type", allow.cartesian=T]
-    })
+    },
+    "energyIntensity" = {
+      dt <- dt[UCD_technology != "Coal"]
+
+      wcols <- c("iso", "UCD_sector", "mode", "size_class", "UCD_technology", "UCD_fuel")
+      dt <- weight[dt, on=wcols]
+      dt[is.na(fe) | fe == 0, fe := min(dt$value, na.rm=TRUE)/100]
+
+      dt <- mapping_UCD_tech[dt, on="UCD_technology"]
+      dt <- mapping_UCD_cat[dt, on=c("UCD_sector", "mode", "size_class")]
+      dt[is.na(technology), technology := UCD_technology]
+      dt <- unique(dt[, .(unit, value=sum(value*fe)/sum(fe)),
+                      by=c("iso", "year", "vehicle_type", "technology")])
+      dt <- lstruct[dt, on=c("vehicle_type", "technology")]
+
+    }
+  )
 
   setnames(dt, "iso", "region")
   return(as.quitte(dt))
